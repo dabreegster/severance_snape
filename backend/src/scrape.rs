@@ -4,7 +4,8 @@ use anyhow::Result;
 use geo::{ConvexHull, Coord, Geometry, GeometryCollection, LineString, Point};
 use osm_reader::{Element, NodeID, WayID};
 
-use crate::common::{Mercator, Tags};
+use osm_graph::{Mercator, Tags};
+
 use crate::{Intersection, IntersectionID, MapModel, Road, RoadID, RoadKind};
 
 struct Way {

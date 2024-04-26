@@ -76,6 +76,7 @@ dependencies = [
  "geo",
  "geojson",
  "log",
+ "osm-graph",
  "osm-reader",
  "rstar",
  "serde",
@@ -460,6 +461,15 @@ name = "once_cell"
 version = "1.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dd8b5dd2ae5ed71462c540258bedcb51965123ad7e7ccf4b9a8cafaa4a63576d"
+
+[[package]]
+name = "osm-graph"
+version = "0.1.0"
+dependencies = [
+ "fast_paths",
+ "geo",
+ "serde",
+]
 
 [[package]]
 name = "osm-reader"

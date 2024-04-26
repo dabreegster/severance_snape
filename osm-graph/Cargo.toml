@@ -1,0 +1,9 @@
+[package]
+name = "osm-graph"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+fast_paths = { git = "https://github.com/easbar/fast_paths" }
+geo = "0.27.0"
+serde = "1.0.188"

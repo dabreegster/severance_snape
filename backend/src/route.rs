@@ -4,7 +4,8 @@ use geo::{EuclideanLength, LineString};
 use geojson::{Feature, FeatureCollection};
 use rstar::RTree;
 
-use crate::common::NodeMap;
+use osm_graph::NodeMap;
+
 use crate::{
     CompareRouteRequest, Intersection, IntersectionID, IntersectionLocation, MapModel, Road,
     RoadKind,
