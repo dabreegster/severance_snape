@@ -91,7 +91,7 @@ pub fn do_route(
         for pair in path.get_nodes().windows(2) {
             let i1 = map.node_map.translate_id(pair[0]);
             let i2 = map.node_map.translate_id(pair[1]);
-            let road = map.find_edge(i1, i2);
+            let road = map.graph.find_edge(i1, i2).unwrap();
             features.push(road.to_gj(&map.graph.mercator));
             route_length += road.linestring.euclidean_length();
         }

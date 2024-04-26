@@ -6,7 +6,7 @@ use std::sync::Once;
 use osm_graph::{Mercator, NodeMap, Tags};
 
 use fast_paths::{FastGraph, PathCalculator};
-use geo::{Coord, Line, LineString, Polygon};
+use geo::{Coord, Line};
 use geojson::{Feature, GeoJson, Geometry};
 use osm_graph::{Graph, IntersectionID, RoadID};
 use rstar::{primitives::GeomWithData, RTree};
@@ -142,22 +142,7 @@ impl MapModel {
     /// Return a polygon covering the world, minus a hole for the boundary, in WGS84
     #[wasm_bindgen(js_name = getInvertedBoundary)]
     pub fn get_inverted_boundary(&self) -> Result<String, JsValue> {
-        let (boundary, _) = self
-            .graph
-            .mercator
-            .to_wgs84(&self.graph.boundary_polygon)
-            .into_inner();
-        let polygon = Polygon::new(
-            LineString::from(vec![
-                (180.0, 90.0),
-                (-180.0, 90.0),
-                (-180.0, -90.0),
-                (180.0, -90.0),
-                (180.0, 90.0),
-            ]),
-            vec![boundary],
-        );
-        let f = Feature::from(Geometry::from(&polygon));
+        let f = Feature::from(Geometry::from(&self.graph.get_inverted_boundary()));
         let out = serde_json::to_string(&f).map_err(err_to_js)?;
         Ok(out)
     }
@@ -176,17 +161,6 @@ impl MapModel {
             .mercator
             .pt_to_mercator(Coord { x: req.x, y: req.y });
         isochrone::calculate(&self, start).map_err(err_to_js)
-    }
-
-    fn find_edge(&self, i1: IntersectionID, i2: IntersectionID) -> &Road {
-        // TODO Store lookup table
-        for r in &self.graph.intersections[i1.0].roads {
-            let road = &self.graph.roads[r.0];
-            if road.src_i == i2 || road.dst_i == i2 {
-                return road;
-            }
-        }
-        panic!("no road from {i1} to {i2} or vice versa");
     }
 }
 

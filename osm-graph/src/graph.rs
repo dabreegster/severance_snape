@@ -53,3 +53,31 @@ pub struct Intersection<IntersectionData> {
 
     pub data: IntersectionData,
 }
+
+impl<RoadData, IntersectionData> Graph<RoadData, IntersectionData> {
+    /// Return a polygon covering the world, minus a hole for the boundary, in WGS84
+    pub fn get_inverted_boundary(&self) -> Polygon {
+        let (boundary, _) = self.mercator.to_wgs84(&self.boundary_polygon).into_inner();
+        Polygon::new(
+            LineString::from(vec![
+                (180.0, 90.0),
+                (-180.0, 90.0),
+                (-180.0, -90.0),
+                (180.0, -90.0),
+                (180.0, 90.0),
+            ]),
+            vec![boundary],
+        )
+    }
+
+    pub fn find_edge(&self, i1: IntersectionID, i2: IntersectionID) -> Option<&Road<RoadData>> {
+        // TODO Store lookup table
+        for r in &self.intersections[i1.0].roads {
+            let road = &self.roads[r.0];
+            if road.src_i == i2 || road.dst_i == i2 {
+                return Some(road);
+            }
+        }
+        None
+    }
+}
