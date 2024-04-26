@@ -15,7 +15,6 @@ geo = "0.27.0"
 geojson = { git = "https://github.com/georust/geojson", features = ["geo-types"] }
 log = "0.4.20"
 osm-graph = { path = "../osm-graph" }
-osm-reader = { git = "https://github.com/a-b-street/osm-reader" }
 rstar = { version = "0.11.0" }
 serde = "1.0.188"
 serde_json = "1.0.105"

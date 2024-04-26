@@ -15,7 +15,9 @@ pub fn calculate(map: &MapModel, req: Coord) -> Result<String> {
     let mut features = Vec::new();
     for (r, cost) in cost_per_road {
         let mut f = geojson::Feature::from(geojson::Geometry::from(
-            &map.mercator.to_wgs84(&map.roads[r.0].linestring),
+            &map.graph
+                .mercator
+                .to_wgs84(&map.graph.roads[r.0].linestring),
         ));
         f.set_property("cost_meters", (cost as f64) / 100.0);
         features.push(f);
@@ -36,7 +38,7 @@ fn get_costs(map: &MapModel, req: Coord, limit: usize) -> HashMap<RoadID, usize>
 
     let mut queue: BinaryHeap<PriorityQueueItem<usize, RoadID>> = BinaryHeap::new();
     // TODO Match closest road. For now, start with all roads for the closest intersection
-    for r in &map.intersections[start.0].roads {
+    for r in &map.graph.intersections[start.0].roads {
         queue.push(PriorityQueueItem::new(0, *r));
     }
 
@@ -50,10 +52,11 @@ fn get_costs(map: &MapModel, req: Coord, limit: usize) -> HashMap<RoadID, usize>
         }
         cost_per_road.insert(current.value, current.cost);
 
-        let current_road = &map.roads[current.value.0];
+        let current_road = &map.graph.roads[current.value.0];
         for i in [current_road.src_i, current_road.dst_i] {
-            for r in &map.intersections[i.0].roads {
-                let cost = (100.0 * map.roads[r.0].linestring.euclidean_length()).round() as usize;
+            for r in &map.graph.intersections[i.0].roads {
+                let cost =
+                    (100.0 * map.graph.roads[r.0].linestring.euclidean_length()).round() as usize;
                 queue.push(PriorityQueueItem::new(current.cost + cost, *r));
             }
         }

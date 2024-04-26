@@ -13,8 +13,8 @@ use crate::{CompareRouteRequest, IntersectionID, MapModel, RoadKind};
 // bundling...
 pub fn along_severances(map: &mut MapModel) -> FeatureCollection {
     let mut requests = Vec::new();
-    for r in &map.roads {
-        if r.kind != RoadKind::Severance {
+    for r in &map.graph.roads {
+        if r.data.kind != RoadKind::Severance {
             continue;
         }
         for line in make_perpendicular_offsets(&r.linestring, 25.0, 15.0) {
@@ -29,8 +29,8 @@ pub fn along_severances(map: &mut MapModel) -> FeatureCollection {
 pub fn nearby_footway_intersections(map: &mut MapModel, dist_meters: f64) -> FeatureCollection {
     // Look for intersections we want to connect
     let mut footway_intersections = HashSet::new();
-    for r in &map.roads {
-        if r.kind == RoadKind::Footway {
+    for r in &map.graph.roads {
+        if r.data.kind == RoadKind::Footway {
             footway_intersections.insert(r.src_i);
             footway_intersections.insert(r.dst_i);
         }
@@ -39,17 +39,20 @@ pub fn nearby_footway_intersections(map: &mut MapModel, dist_meters: f64) -> Fea
     // Make an rtree
     let mut points: Vec<GeomWithData<[f64; 2], IntersectionID>> = Vec::new();
     for i in &footway_intersections {
-        points.push(GeomWithData::new(map.intersections[i.0].point.into(), *i));
+        points.push(GeomWithData::new(
+            map.graph.intersections[i.0].point.into(),
+            *i,
+        ));
     }
     let rtree = RTree::bulk_load(points);
 
     // For every intersection, try to go to every nearby intersection
     let mut requests = Vec::new();
     for i1 in &footway_intersections {
-        let i1_pt = map.intersections[i1.0].point;
+        let i1_pt = map.graph.intersections[i1.0].point;
         for i2 in rtree.locate_within_distance(i1_pt.into(), dist_meters) {
             // TODO Skip trivial things connected by a road
-            let i2_pt = map.intersections[i2.data.0].point;
+            let i2_pt = map.graph.intersections[i2.data.0].point;
             requests.push(CompareRouteRequest {
                 x1: i1_pt.x(),
                 y1: i1_pt.y(),

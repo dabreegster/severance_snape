@@ -1,16 +1,16 @@
 #[macro_use]
 extern crate log;
 
-use std::fmt;
 use std::sync::Once;
 
 use osm_graph::{Mercator, NodeMap, Tags};
 
 use fast_paths::{FastGraph, PathCalculator};
-use geo::{Coord, Line, LineString, Point, Polygon};
+use geo::{Coord, Line, LineString, Polygon};
 use geojson::{Feature, GeoJson, Geometry};
+use osm_graph::{Graph, IntersectionID, RoadID};
 use rstar::{primitives::GeomWithData, RTree};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use wasm_bindgen::prelude::*;
 
 mod heatmap;
@@ -22,43 +22,15 @@ static START: Once = Once::new();
 
 #[wasm_bindgen]
 pub struct MapModel {
-    roads: Vec<Road>,
-    intersections: Vec<Intersection>,
-    // All geometry stored in worldspace, including rtrees
-    mercator: Mercator,
+    graph: Graph<RoadData, ()>,
     // Only snaps to walkable roads
     closest_intersection: RTree<IntersectionLocation>,
     node_map: NodeMap<IntersectionID>,
     ch: FastGraph,
     path_calc: PathCalculator,
-    boundary_polygon: Polygon,
 }
 
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, PartialOrd, Ord)]
-pub struct RoadID(pub usize);
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, PartialOrd, Ord, Serialize)]
-pub struct IntersectionID(pub usize);
-
-impl fmt::Display for RoadID {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Road #{}", self.0)
-    }
-}
-
-impl fmt::Display for IntersectionID {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Intersection #{}", self.0)
-    }
-}
-
-pub struct Road {
-    id: RoadID,
-    src_i: IntersectionID,
-    dst_i: IntersectionID,
-    way: osm_reader::WayID,
-    node1: osm_reader::NodeID,
-    node2: osm_reader::NodeID,
-    linestring: LineString,
+pub struct RoadData {
     tags: Tags,
     kind: RoadKind,
 }
@@ -74,15 +46,11 @@ pub enum RoadKind {
     // TODO other types of road?
 }
 
-pub struct Intersection {
-    id: IntersectionID,
-    #[allow(dead_code)]
-    node: osm_reader::NodeID,
-    point: Point,
-    roads: Vec<RoadID>,
-}
+pub type Road = osm_graph::Road<RoadData>;
+pub type Intersection = osm_graph::Intersection<()>;
 
 // fast_paths ID representing the OSM node ID as the data
+// TODO No, I think this is a fast paths NodeID?
 type IntersectionLocation = GeomWithData<[f64; 2], usize>;
 
 #[wasm_bindgen]
@@ -99,7 +67,28 @@ impl MapModel {
             console_log::init_with_level(log::Level::Info).unwrap();
         });
 
-        scrape::scrape_osm(input_bytes, import_streets_without_sidewalk_tagging).map_err(err_to_js)
+        let graph = Graph::new(
+            input_bytes,
+            |tags| scrape::classify(tags, import_streets_without_sidewalk_tagging).is_some(),
+            |tags| RoadData {
+                tags: tags.clone(),
+                kind: scrape::classify(tags, import_streets_without_sidewalk_tagging).unwrap(),
+            },
+            || (),
+        )
+        .map_err(err_to_js)?;
+
+        let (closest_intersection, node_map, ch) =
+            crate::route::build_router(&graph.intersections, &graph.roads);
+        let path_calc = fast_paths::create_calculator(&ch);
+
+        Ok(Self {
+            graph,
+            closest_intersection,
+            node_map,
+            ch,
+            path_calc,
+        })
     }
 
     /// Returns a GeoJSON string. Just shows the full ped network
@@ -107,8 +96,8 @@ impl MapModel {
     pub fn render(&self) -> Result<String, JsValue> {
         let mut features = Vec::new();
 
-        for r in &self.roads {
-            features.push(r.to_gj(&self.mercator));
+        for r in &self.graph.roads {
+            features.push(r.to_gj(&self.graph.mercator));
         }
 
         let gj = GeoJson::from(features);
@@ -119,11 +108,11 @@ impl MapModel {
     #[wasm_bindgen(js_name = compareRoute)]
     pub fn compare_route(&mut self, input: JsValue) -> Result<String, JsValue> {
         let req: CompareRouteRequest = serde_wasm_bindgen::from_value(input)?;
-        let pt1 = self.mercator.pt_to_mercator(Coord {
+        let pt1 = self.graph.mercator.pt_to_mercator(Coord {
             x: req.x1,
             y: req.y1,
         });
-        let pt2 = self.mercator.pt_to_mercator(Coord {
+        let pt2 = self.graph.mercator.pt_to_mercator(Coord {
             x: req.x2,
             y: req.y2,
         });
@@ -153,7 +142,11 @@ impl MapModel {
     /// Return a polygon covering the world, minus a hole for the boundary, in WGS84
     #[wasm_bindgen(js_name = getInvertedBoundary)]
     pub fn get_inverted_boundary(&self) -> Result<String, JsValue> {
-        let (boundary, _) = self.mercator.to_wgs84(&self.boundary_polygon).into_inner();
+        let (boundary, _) = self
+            .graph
+            .mercator
+            .to_wgs84(&self.graph.boundary_polygon)
+            .into_inner();
         let polygon = Polygon::new(
             LineString::from(vec![
                 (180.0, 90.0),
@@ -171,21 +164,24 @@ impl MapModel {
 
     #[wasm_bindgen(js_name = getBounds)]
     pub fn get_bounds(&self) -> Vec<f64> {
-        let b = &self.mercator.wgs84_bounds;
+        let b = &self.graph.mercator.wgs84_bounds;
         vec![b.min().x, b.min().y, b.max().x, b.max().y]
     }
 
     #[wasm_bindgen(js_name = isochrone)]
     pub fn isochrone(&self, input: JsValue) -> Result<String, JsValue> {
         let req: IsochroneRequest = serde_wasm_bindgen::from_value(input)?;
-        let start = self.mercator.pt_to_mercator(Coord { x: req.x, y: req.y });
+        let start = self
+            .graph
+            .mercator
+            .pt_to_mercator(Coord { x: req.x, y: req.y });
         isochrone::calculate(&self, start).map_err(err_to_js)
     }
 
     fn find_edge(&self, i1: IntersectionID, i2: IntersectionID) -> &Road {
         // TODO Store lookup table
-        for r in &self.intersections[i1.0].roads {
-            let road = &self.roads[r.0];
+        for r in &self.graph.intersections[i1.0].roads {
+            let road = &self.graph.roads[r.0];
             if road.src_i == i2 || road.dst_i == i2 {
                 return road;
             }
@@ -194,15 +190,19 @@ impl MapModel {
     }
 }
 
-impl Road {
+trait RoadLike {
+    fn to_gj(&self, mercator: &Mercator) -> Feature;
+}
+
+impl RoadLike for Road {
     fn to_gj(&self, mercator: &Mercator) -> Feature {
         let mut f = Feature::from(Geometry::from(&mercator.to_wgs84(&self.linestring)));
         f.set_property("id", self.id.0);
-        f.set_property("kind", format!("{:?}", self.kind));
+        f.set_property("kind", format!("{:?}", self.data.kind));
         f.set_property("way", self.way.to_string());
         f.set_property("node1", self.node1.to_string());
         f.set_property("node2", self.node2.to_string());
-        for (k, v) in &self.tags.0 {
+        for (k, v) in &self.data.tags.0 {
             f.set_property(k, v.to_string());
         }
         f

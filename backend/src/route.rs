@@ -8,7 +8,7 @@ use osm_graph::NodeMap;
 
 use crate::{
     CompareRouteRequest, Intersection, IntersectionID, IntersectionLocation, MapModel, Road,
-    RoadKind,
+    RoadKind, RoadLike,
 };
 
 pub fn build_router(
@@ -23,7 +23,7 @@ pub fn build_router(
     let mut node_map = NodeMap::new();
 
     for r in roads {
-        if r.kind == RoadKind::Severance {
+        if r.data.kind == RoadKind::Severance {
             continue;
         }
         let node1 = node_map.get_or_insert(r.src_i);
@@ -75,15 +75,15 @@ pub fn do_route(
 
     if let Some(path) = map.path_calc.calc_path(&map.ch, start, end) {
         let direct_line = LineString::new(vec![
-            map.intersections[map.node_map.translate_id(start).0]
+            map.graph.intersections[map.node_map.translate_id(start).0]
                 .point
                 .into(),
-            map.intersections[map.node_map.translate_id(end).0]
+            map.graph.intersections[map.node_map.translate_id(end).0]
                 .point
                 .into(),
         ]);
         let direct_feature = Feature::from(geojson::Geometry::from(
-            &map.mercator.to_wgs84(&direct_line),
+            &map.graph.mercator.to_wgs84(&direct_line),
         ));
 
         let mut features = Vec::new();
@@ -92,7 +92,7 @@ pub fn do_route(
             let i1 = map.node_map.translate_id(pair[0]);
             let i2 = map.node_map.translate_id(pair[1]);
             let road = map.find_edge(i1, i2);
-            features.push(road.to_gj(&map.mercator));
+            features.push(road.to_gj(&map.graph.mercator));
             route_length += road.linestring.euclidean_length();
         }
         let direct_length = direct_line.euclidean_length();

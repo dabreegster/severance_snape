@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+anyhow = "1.0.75"
 fast_paths = { git = "https://github.com/easbar/fast_paths" }
 geo = "0.27.0"
-serde = "1.0.188"
+osm-reader = { git = "https://github.com/a-b-street/osm-reader" }

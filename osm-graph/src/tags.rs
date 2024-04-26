@@ -1,10 +1,8 @@
 use std::collections::{BTreeMap, HashMap};
 
-use serde::{Deserialize, Serialize};
-
 /// Convenience functions around a string->string map
-// BTreeMap for deterministic serialization
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+// BTreeMap for deterministic serialization (TODO optional?)
+#[derive(Clone, Debug, PartialEq)]
 pub struct Tags(pub BTreeMap<String, String>);
 
 #[allow(dead_code)]

@@ -77,7 +77,6 @@ dependencies = [
  "geojson",
  "log",
  "osm-graph",
- "osm-reader",
  "rstar",
  "serde",
  "serde-wasm-bindgen",
@@ -466,9 +465,10 @@ checksum = "dd8b5dd2ae5ed71462c540258bedcb51965123ad7e7ccf4b9a8cafaa4a63576d"
 name = "osm-graph"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "fast_paths",
  "geo",
- "serde",
+ "osm-reader",
 ]
 
 [[package]]
